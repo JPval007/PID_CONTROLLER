@@ -297,7 +297,7 @@ void Timer0IntHandler(void)
 
 
 
-
+//TOGGLE LED 
 void Toggle(void){
     if (toggle==1){
         // Turn on the LED.
@@ -311,50 +311,49 @@ void Toggle(void){
 }
 
 void ADC_CONFIG(void){
-    //Habilitamos el módulo del ADC0
+    //ENABLE ADC0 MODULE
     SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
-    //HABILITAMOS EL PUERTO E QUE ES DONDE ESTÁ EL ADC
+    //ENABLE PORTE (ADC0 IS IN THIS PORT)
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
-    //HABILITAMOS LOS PINES PAG 801 DATASHEET
+    //ENABLE ANALOG INPUT PINS (PAG 801 OF DATASHEET)
     GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_3 | GPIO_PIN_2);
-    // ESPERAMOS A QUE ESTÉ LISTO
+    // WAIT FOR IT TO BE READY
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0))
     {
     }
-    //CONFIGURAMOS EL ADC PARA QUE SE ACTIVE CUANDO QUERRAMOS
+    //CONFIGURE ON COMMAND READINGS
     ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 0);
-    //ADC_CTL_CH0 ES EL CANAL 0 Y ADC_CTL_CH1 ES EL CANAL 1 ADC_CTL_IE ES PARA QUE CAUSE UNA INTERRUPCIÓN AL TERMINAR
-    //ADC_CTL_END ES PARA QUE SOLO REALICE 1 MUESTRA
+    //ADC_CTL_CH0 IS CHANNEL 0 AND ADC_CTL_CH1 IS CHANNEL 1 , ADC_CTL_IE IS TO TRIGGER AN INTERRUPT WHEN THE READING IS DONE
+    //ADC_CTL_END IS FOR THE FINAL READING TO TAKE PLACE
     ADCSequenceStepConfigure(ADC0_BASE, 2, 0, ADC_CTL_CH0);
     ADCSequenceStepConfigure(ADC0_BASE, 2, 1, ADC_CTL_IE | ADC_CTL_END | ADC_CTL_CH1);
-    //AHORA QUE SE CONFIGURÓ, SE ACTIVA ESA SECUENCIA
+    //ACTIVATE SEQUENCE 2
     ADCSequenceEnable(ADC0_BASE, 2);
-    //NOS ASEGURAMOS QUE NUESTRAS INTERRUPCIONES ESTÉN DESACTIVADAS
+    //DISABLE INTERRUPT FLAGS FOR THIS PART
     ADCIntClear(ADC0_BASE, 2);
-    //ACTIVAMOS LAS INTERRUPCIONES DEL MÓDULO
+    //ENABLE ADC INTERRUPT
     ADCIntEnable(ADC0_BASE, 2);
-    //ASIGNAMOS LA FUNCIÓN PARA LAS INTERRUPCIONES
+    //CONFIGURE INTERRUPT HANDLER
     ADCIntRegister(ADC0_BASE, 2, ADC0Handler);
 
     return;
 }
 
 void ADC0Handler(void){
-    //Eliminamos las banderas de interrupción
+    //CLEAR FLAGS
     ADCIntClear(ADC0_BASE, 2);
 
-    //LEEMOS EL VALOR
-    //Se debe colocar un puntero porque la función solo requiere la dirección de memoria para almacenar el valor
+    //READ ANALOG VALUE
     ADCSequenceDataGet(ADC0_BASE, 2, adc_value);
 
-    //CONVERSIÓN A VALORES ANALÓGICOS
-    AN0 = (float) adc_value[0]*3.3/4095.0; //Canal 0 (Step)
-    AN1 = (float) adc_value[1]*3.3/4095.0; //Canal 1 (System response)
+    //CONVERT THE VALUE TO A VOLTAGE (0V - 3.3V)
+    AN0 = (float) adc_value[0]*3.3/4095.0; //CHANNEL 0 (INPUT)
+    AN1 = (float) adc_value[1]*3.3/4095.0; //CHANNEL 1 (System response)
     ref = AN0;
     yk = AN1;
-    //Se procesan los datos de una vez
+    //PROCESS DATA
     procesar();
-    //MOSTRAMOSE EL VALOR POR UART
+    //SEND THE VALUE TO THE PC (DEBUGGING PHASE ONLY)
     //UARTprintf("AN0: %d\n -> %2f \nAN1: %d\n -> %2f \n", adc_value[0], AN0, adc_value[1], AN1);
 }
 
@@ -362,15 +361,15 @@ void SPI_CONFIG(void){
     // The SSI0 peripheral must be enabled for use.
     SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI0);
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-    //CONFIGURAR LOS PINES QUE UTILIZARÁ EL SPI
+    //CONFIGURE SPI PINS
     GPIOPinConfigure(GPIO_PA2_SSI0CLK);
     GPIOPinConfigure(GPIO_PA3_SSI0FSS);
     GPIOPinConfigure(GPIO_PA4_SSI0RX);
     GPIOPinConfigure(GPIO_PA5_SSI0TX);
-    //los pines los manejará el módulo SPI
+    //ALLOW SPI MODULE TO HANDLE THE PINS
     GPIOPinTypeSSI(GPIO_PORTA_BASE, GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_3 | GPIO_PIN_2);
     SSIConfigSetExpClk(SSI0_BASE, SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, SPI_FREC, SPI_ANCHO);
-    // Enable the SSI0 module.
+    // ENABLE SSI0 MODULE
     SSIEnable(SSI0_BASE);
     while(SSIDataGetNonBlocking(SSI0_BASE, &pui32residual[0]))
     {
@@ -384,23 +383,22 @@ void procesar(void){
     Ek = Ek + ek;
     uk =kp*ek + ki*Ek + kd*ed;
     ek_1 = ek;
-    //Ek_1 = Ek;
-    //descomprimimos la variable
-    unfold = uk*4095.0/3.3; // convertimos a un valor entre 0 y 4095
-    //SE DEBE CONVERTIR EL DATO DE FLOAT A ENTERO Y DALE FORMATO DE 16 BITS
+    //TRANSFORM BACK TO A VALUE BETWEEN 0 - 4095
+    unfold = uk*4095.0/3.3; 
+    //CAST INTO A 16 BIT UNSIGNED INTEGRER TO SEND VIA SPI
     if (ref<0.1){
         unfold = 0.1;
     }
     uk_entero = (uint16_t) unfold;
 /*
     if (uk_entero>=4095){
-        uk_entero=uk_entero>>4; //si se pasa de 4095 entonces se utilizan los msb
+        uk_entero=uk_entero>>4; //IF IT IS GREATER THAN 4095 THEN SHIFT TO THE RIGHT 4 BITS
         }
 */
-    //Determinar si se pasa de 4095, si se pasa entonces se debe hacer un corrimiento >>4
+    //  AFTER THE SHIFT WE ARE LEFT WITH THIS VALUE BECAUSE THE FIRST NIBBLE IS THE OPCODE FOR THE DAC
     //                      0x0FFF
-    uk_entero = uk_entero & 0b0000111111111111; //eliminamos los bits de configuracion
+    uk_entero = uk_entero & 0b0000111111111111; //CLEAR THE OPCODE NIBBLE
     //                      0xF000
-    uk_entero = uk_entero | 0b0111000000000000; //aseguramos los bits de config
+    uk_entero = uk_entero | 0b0111000000000000; //CONFIGURE DAC FOR ANALOG WRITE
     dato = uk_entero;
 }
