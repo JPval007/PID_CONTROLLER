@@ -1,10 +1,11 @@
 //*****************************************************************************
 /*
  * Universidad del Valle de Guatemala
- * Sistemas de Control 1
+ * Control Systems 1
  * Seccion: 11
  * Autor: Juan Pablo Valenzuela
- * Carnet: 18057
+ * Description: This is a digital PID controller designed to improve a
+ * servo motor's performance.
  */
 //*****************************************************************************
 
@@ -27,11 +28,11 @@
 #include "driverlib/ssi.h"
 //*****************************************************************************
 //*****************************************************************************
-// Definiciones para configuración del SPI
+// SPI configuration definitions
 //*****************************************************************************
-#define NUM_SPI_DATA    1  // Número de palabras que se envían cada vez
-#define SPI_FREC  4000000  // Frecuencia para el reloj del SPI
-#define SPI_ANCHO      16  // Número de bits que se envían cada vez, entre 4 y 16
+#define NUM_SPI_DATA    1  // Number of bytes send
+#define SPI_FREC  4000000  // SPI clock freq
+#define SPI_ANCHO      16  // Number of bits send each time, between 14 and 16
 //*****************************************************************************
 
 //*****************************************************************************
@@ -40,32 +41,32 @@
 // on the UART.
 //
 //*****************************************************************************
-uint32_t g_ui32Flags; //cosa del ejemplo
-uint32_t ui32Period = 0; //Variable del periodo del timer
-uint8_t cont0 = 0, cont1 = 0; //contadores del programa
-volatile uint32_t ui32Loop; // cosa del ejemplo
-unsigned char toggle = 0; //control del toggle
-unsigned char XOR_TEST = 0;
+uint32_t g_ui32Flags; //example flag
+uint32_t ui32Period = 0; //Timer period
+uint8_t cont0 = 0, cont1 = 0; //counters
+volatile uint32_t ui32Loop;
+unsigned char toggle = 0; //toggle control
+unsigned char XOR_TEST = 0; //toggle with XOR boolean operation
 uint32_t adc_value[2];
 
 
 //TIMER
-uint32_t freq_muestreo = 1000;    // En Hz
+uint32_t freq_muestreo = 1000;    // In Hz
 
 
 //UART - ADC
-uint32_t UART_TEST = 0; //VARIABLE DE PRUEBA PARA UARTPRINTF();
-int ADC_CONTROL = 0; //controla qué canal del ADC se utiliza
-//VALORES FINALES
+uint32_t UART_TEST = 0; //Test variable for UARTPRINTF();
+int ADC_CONTROL = 0; //controls which ADC channel is used
+//Final values for analog reading
 float AN0;
 float AN1;
-//VARIABLES DEL SPI
+//SPI VARIABLES
 uint32_t pui32residual[NUM_SPI_DATA];
-uint32_t pui32DataTx[NUM_SPI_DATA]; // la función put pide tipo uint32_t
+uint32_t pui32DataTx[NUM_SPI_DATA]; // uint32_t data for buffer
 uint8_t ui32Index;
-uint16_t dato = 0b0111000000000000;  // Para lo que se envía por SPI.
+uint16_t dato = 0b0111000000000000;  // DAC opcode for writing
 uint16_t uk_entero;
-//Procesar datos
+//Data processing
 float ek_1 = 0;
 float Ek_1 = 0;
 float kp = 0.01;//;4.7801;
@@ -77,39 +78,39 @@ float ek = 0;
 float uk = 0;
 float ed = 0;
 float Ek = 0;
-//CONVERTIR DE FLOAT A ENTERO DE 16 BITS
+//Float to integrer conversion
 float unfold=0;
-//MASCARAS
 
 //*****************************************************************************
 //
-// Prototipos de función
+// Function prototypes
 //
 //*****************************************************************************
 void Startup(void);
 void UART_CONFIG(void);
 void TIMER0_CONFIG(void);
 void Toggle(void);
-void Timer0IntHandler(void);
 void ADC_CONFIG(void);
 void SendNum(uint32_t num);
-//HANDLER INTERRUPCION ADC
+//HANDLER FOR ADC INTERRPUT
 void ADC0Handler(void);
 void SPI_CONFIG(void);
-//PROCESAR DATOS
+//DATA PROCESSING FUNCTION
 void procesar(void);
 //*****************************************************************************
 //
-// The interrupt handler for the first timer interrupt.
+// The interrupt handler timer interrupt.
 //
 //*****************************************************************************
+void Timer0IntHandler(void);
 //*****************************************************************************
 //
 // SETUP
 //
 //*****************************************************************************
-void Setup(void){
-    // Se setea oscilador externo de 16MHz
+void Setup(void)
+{
+    // External 16MHz clock
     SysCtlClockSet(SYSCTL_SYSDIV_2_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);  //Reloj configurado a 80MHz
     //
     // Enable the GPIO port that is used for the on-board LED.
@@ -131,26 +132,26 @@ void Setup(void){
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2); //BLUE
     GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1); //RED
 
-    //MODULO UART
+    //UART MODULE
     UART_CONFIG();
 
     //TIMER0
     TIMER0_CONFIG();
 
-    //ADC0 config
+    //ADC0 CONFIGURATION
     ADC_CONFIG();
 
-    //SPI config
+    //SPI CONFIGURATION
     SPI_CONFIG();
 }
 //*****************************************************************************
 //
-//                          LOOP PRINCIPAL (ARDUINO)
+//                          MAIN LOOP (ARDUINO ANALOGY)
 //
 //*****************************************************************************
 int main(void)
 {
-    //Llamamos a la configuración
+    //Configure the peripherals
     Setup();
 
     //
@@ -158,13 +159,14 @@ int main(void)
     //
     while(1)
     {
-
+    // it is empty because readings are taken in the interruption.
 
     }
 }
 
 
 void Startup(void){
+    //Sucessful start message
     UARTprintf("Hola Mundo\n\n\n");
     return;
 }
@@ -190,7 +192,7 @@ void UART_CONFIG(void){
     // Initialize the UART for console I/O.
     UARTStdioConfig(0, 115200, 80000000);
 
-    //MENSAJE DE INICIO EXITOSO
+    //STARTUP MESSAGE
     Startup();
     return;
 }
@@ -198,33 +200,33 @@ void UART_CONFIG(void){
 
 void TIMER0_CONFIG(void){
     ///*************************************************************************************************************************
-    //Configuración del timer 0
+    //              TIMER0 CONFIGURATION    
     //*************************************************************************************************************************s
 
-    // Se habilita el reloj para el timer 0
+    // Enable TIMER0 clock
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
-    // Configuración del Timer 0 como temporizador períodico
+    // Configure as periodic timer
     TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
 
-    // Se calcula el período para el temporizador (1 seg) este período es el que se utiliza para actualizar los datos en el servidor web
+    // Calculation of timer period (1 seg) 
     ui32Period = (SysCtlClockGet()/freq_muestreo);
-    // Establecer el periodo del temporizador
+    // Timer period setup
     TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period - 1);
 
-    //Registramos la función a habilitar para la interrupción
+    //Register TIMER0 interrupt handler
     IntRegister(INT_TIMER0A, Timer0IntHandler);
 
-    // Se habilita la interrupción por el TIMER0A
+    // ENABLE TIMER0A INTERRUPT
     IntEnable(INT_TIMER0A);
-    // Se establece que exista la interrupción por Timeout
+    // Activate Timeout Interrupt type
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    // Se habilitan las interrupciones Globales
+    // ENABLE GLOBAL INTERRUPT
     IntMasterEnable();
-    // Se habilita el Timer
+    // ENABLE TIMER
     TimerEnable(TIMER0_BASE, TIMER_A);
 
-    // Clear the timer interrupt
+    // CLEAR THE TIMER INTERRUPT (JUST IN CASE)
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
     return;
 }
@@ -238,23 +240,25 @@ void TIMER0_CONFIG(void){
 
 
 //**************************************************************************************************************
-// Handler de la interrupción del TIMER 0 - Recordar modificar el archivo tm4c123ght6pm_startup_css.c
+//                  TIMER 0 HANDLER
 //**************************************************************************************************************
 void Timer0IntHandler(void)
 {
     // Clear the timer interrupt
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    // ACA VA EL CODIGO PARA EJECUTAR EN EL INTERVALO
-    //Toggle(); //Luz
-    //XOR_TEST = XOR_TEST ^ 0X1;
-    ADCProcessorTrigger(ADC0_BASE, 2);
+    // Interruption code
+    //Toggle(); //LED
+    //XOR_TEST = XOR_TEST ^ 0X1; //LED TOGGLE USING XOR
+    ADCProcessorTrigger(ADC0_BASE, 2); //START ADC READING IN CHANNEL 2
 
-    //CODIGO DAC
-    //ENVIAR AL DAC
-    //ACA PONER EL CAST DEL DATO UK EN FLOAT
+    //*********************************************************
+    //DAC CODE
+    //*********************************************************
+    //SEND THE ANALOG VOLTAGE DATA
+    //REMEMBER TO SEND AN INTEGRER VALUE
 
     dato = uk;
-    // Colocar el dato de SPI_ANCHO bits en pui32DataTx
+    // PUT THE DATA INTO THE pui32DataTx BUFFER
     pui32DataTx[0] = (uint32_t)(dato);
 
     // Send data
@@ -271,6 +275,7 @@ void Timer0IntHandler(void)
     while(SSIBusy(SSI0_BASE))
     {
     }
+    //DAC RAMP EXAMPLE
     /*
     dato = dato +1;
     if (dato == 0b0111111111111111){
